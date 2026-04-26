@@ -1002,8 +1002,6 @@ export default function App() {
                     onDelete={id => updatePortfolios(p => ({ ...p, [tab]: { ...p[tab], holdings: p[tab].holdings.filter(h => h.id !== id) } }))}
                     dragHandle={dragHandle}
                   />
-
-                </div>
               )}
             />
           </>
