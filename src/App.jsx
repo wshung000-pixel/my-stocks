@@ -384,14 +384,16 @@ function AddCashModal({ onClose, onAdd }) {
 // ── Edit Stock Modal ──────────────────────────────────────
 function EditStockModal({ holding, onClose, onSave }) {
   const trades0 = holding.trades || [];
-  const [shares,  setShares]  = useState(String(holding.shares));
-  const [price,   setPrice]   = useState(String(holding.price));
-  const [trades,  setTrades]  = useState(trades0);
+  const [shares,    setShares]    = useState(String(holding.shares));
+  const [price,     setPrice]     = useState(String(holding.price));
+  const [unitCost,  setUnitCost]  = useState(trades0.length === 0 && holding.unitCost ? String(holding.unitCost) : "");
+  const [trades,    setTrades]    = useState(trades0);
   const [newShares, setNewShares] = useState("");
   const [newPrice,  setNewPrice]  = useState("");
   const [newDate,   setNewDate]   = useState("");
   const [newType,   setNewType]   = useState("buy");
-  const [showAdd,   setShowAdd]   = useState(false);
+  const [showAdd,     setShowAdd]     = useState(false);
+  const [showTrades,  setShowTrades]  = useState(false);
 
   function addTrade() {
     const s = parseFloat(newShares), p = parseFloat(newPrice);
@@ -405,7 +407,13 @@ function EditStockModal({ holding, onClose, onSave }) {
   function submit() {
     const s = parseFloat(shares), p = parseFloat(price);
     if (isNaN(s) || isNaN(p)) return;
-    onSave(holding.id, { shares: s, price: p, trades });
+    // If unitCost filled and no trades yet, create a single buy trade
+    let finalTrades = trades;
+    const uc = parseFloat(unitCost);
+    if (!isNaN(uc) && uc > 0 && trades.length === 0) {
+      finalTrades = [{ id: Date.now(), shares: s, price: uc, date: null, type: "buy" }];
+    }
+    onSave(holding.id, { shares: s, price: p, trades: finalTrades, unitCost: (!isNaN(uc) && uc > 0) ? uc : null });
     onClose();
   }
 
@@ -425,17 +433,31 @@ function EditStockModal({ holding, onClose, onSave }) {
         </div>
       </div>
 
+      {/* Unit cost shortcut - only show if no trades yet */}
+      {trades.length === 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <label style={S.label}>單位成本（快速填入均價）</label>
+          <input value={unitCost} onChange={e => setUnitCost(e.target.value)}
+            placeholder="例：1800（填完儲存後自動建立買入記錄）"
+            style={{ ...S.input, background: unitCost ? "#f0fdf9" : "#f8fffe" }}
+            inputMode="decimal" />
+        </div>
+      )}
+
       {/* Trades section */}
       <div style={{ borderTop: "1px solid #e6faf5", paddingTop: 14, marginBottom: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#0f4c3a" }}>買賣記錄</span>
-          {avgCost && (
-            <span style={{ fontSize: 11, color: "#10b981", fontFamily: "monospace" }}>
-              均價 {avgCost.toFixed(2)} · {totalShares} 股
-            </span>
-          )}
-        </div>
+        <button onClick={() => setShowTrades(v => !v)}
+          style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", cursor: "pointer", padding: "0 0 10px" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#0f4c3a" }}>
+            買賣記錄 {trades.length > 0 ? `(${trades.length})` : ""}
+          </span>
+          <span style={{ fontSize: 12, color: "#10b981", display: "flex", alignItems: "center", gap: 4 }}>
+            {avgCost && <span style={{ fontFamily: "monospace" }}>均價 {avgCost.toFixed(2)}</span>}
+            <span>{showTrades ? "▲" : "▼"}</span>
+          </span>
+        </button>
 
+        {showTrades && (<>
         {/* Trade list */}
         {trades.length === 0 && (
           <div style={{ color: "#9ca3af", fontSize: 12, textAlign: "center", padding: "8px 0 12px" }}>尚未新增買賣記錄</div>
@@ -500,6 +522,15 @@ function EditStockModal({ holding, onClose, onSave }) {
             + 新增買賣記錄
           </button>
         )}
+        </>)}
+
+        {/* Always show add button when trades are collapsed */}
+        {!showTrades && !showAdd && (
+          <button onClick={() => { setShowTrades(true); setShowAdd(true); }}
+            style={{ width: "100%", border: "1.5px dashed #a7f3d0", borderRadius: 10, background: "transparent", color: "#10b981", fontSize: 13, fontWeight: 600, padding: "8px", cursor: "pointer" }}>
+            + 新增買賣記錄
+          </button>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
@@ -538,29 +569,91 @@ function EditCashModal({ account, onClose, onSave }) {
 // ── Holding Card ──────────────────────────────────────────
 function HoldingCard({ h, pct, color, currency, isUpdating, onEdit, onDelete, dragHandle }) {
   const sym = currency === "USD" ? "US$" : "$";
+  const { avgCost, firstDate, realizedGain } = calcCost(h.trades || []);
+  const returnPct  = avgCost ? (h.price - avgCost) / avgCost * 100 : null;
+  const profit     = avgCost ? (h.price - avgCost) * h.shares : null;
+  const days       = firstDate ? Math.max(1, (Date.now() - new Date(firstDate)) / 86400000) : null;
+  const annualizedRaw = days && days >= 7 && returnPct !== null ? ((1 + returnPct / 100) ** (365 / days) - 1) * 100 : null;
+  const annualized = annualizedRaw !== null && isFinite(annualizedRaw) && Math.abs(annualizedRaw) < 100000 ? annualizedRaw : null;
+  const [expanded, setExpanded] = useState(false);
+
   return (
-    <div style={{ background: "#fff", borderRadius: 18, padding: "14px 14px 14px 8px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10, border: "1.5px solid #e6faf5", boxShadow: "0 2px 12px rgba(16,185,129,0.06)" }}>
-      <div {...dragHandle} style={{ color: "#d1d5db", fontSize: 20, padding: "0 4px", cursor: "grab", userSelect: "none", flexShrink: 0 }}>⠿</div>
-      <div style={{ width: 44, height: 44, borderRadius: "50%", flexShrink: 0, background: `conic-gradient(${color} ${pct * 3.6}deg, #e6faf5 ${pct * 3.6}deg)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ fontSize: 9, fontWeight: 800, color, fontFamily: "monospace" }}>{pct}%</span>
+    <div style={{ marginBottom: 10 }}>
+      {/* Main card */}
+      <div
+        onClick={() => avgCost && setExpanded(v => !v)}
+        style={{ background: "#fff", borderRadius: expanded ? "18px 18px 0 0" : 18, padding: "12px 14px 12px 8px", display: "flex", alignItems: "center", gap: 10, border: "1.5px solid #e6faf5", borderBottom: expanded ? "none" : "1.5px solid #e6faf5", boxShadow: expanded ? "none" : "0 2px 12px rgba(16,185,129,0.06)", cursor: avgCost ? "pointer" : "default" }}>
+        <div {...dragHandle} onClick={e => e.stopPropagation()} style={{ color: "#d1d5db", fontSize: 20, padding: "0 4px", cursor: "grab", userSelect: "none", flexShrink: 0 }}>⠿</div>
+        <div style={{ width: 42, height: 42, borderRadius: "50%", flexShrink: 0, background: `conic-gradient(${color} ${pct * 3.6}deg, #e6faf5 ${pct * 3.6}deg)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontSize: 9, fontWeight: 800, color, fontFamily: "monospace" }}>{pct}%</span>
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#1a1a2e", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h.name}</div>
+          <div style={{ fontSize: 11, marginTop: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ color, fontWeight: 600, fontFamily: "monospace" }}>{h.ticker.replace(".TW","")}</span>
+            <span style={{ color: "#9ca3af" }}>
+              {f(h.shares, h.shares % 1 ? 2 : 0)} 股 · {sym}{f(h.price, 2)}
+              {isUpdating && <span style={{ color: "#10b981", marginLeft: 3 }}>↻</span>}
+            </span>
+          </div>
+          {avgCost && (
+            <div style={{ fontSize: 11, marginTop: 2, display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "#9ca3af" }}>均價 {sym}{f(avgCost, 2)}</span>
+              <span style={{ fontWeight: 700, color: returnPct >= 0 ? "#10b981" : "#f43f5e", fontFamily: "monospace" }}>
+                {returnPct >= 0 ? "▲" : "▼"}{Math.abs(returnPct).toFixed(1)}%
+                <span style={{ fontSize: 10, marginLeft: 4, color: "#9ca3af" }}>{expanded ? "▲" : "▼"}</span>
+              </span>
+            </div>
+          )}
+        </div>
+        <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 4 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: "#0f4c3a", fontFamily: "monospace" }}>{sym}{f(Math.round(h.shares * h.price))}</div>
+          <div style={{ display: "flex", gap: 4, marginTop: 4, justifyContent: "flex-end" }}>
+            <button onClick={e => { e.stopPropagation(); onEdit(h); }} style={{ background: "#ecfdf5", border: "none", borderRadius: 7, color: "#10b981", fontSize: 11, padding: "3px 8px", fontWeight: 600, cursor: "pointer" }}>編輯</button>
+            <button onClick={e => { e.stopPropagation(); onDelete(h.id); }} style={{ background: "#fff1f2", border: "none", borderRadius: 7, color: "#f43f5e", fontSize: 11, padding: "3px 8px", fontWeight: 600, cursor: "pointer" }}>刪除</button>
+          </div>
         </div>
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "#1a1a2e", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{h.name}</div>
-        <div style={{ fontSize: 11, color, fontWeight: 600, fontFamily: "monospace", marginTop: 1 }}>{h.ticker.replace(".TW", "")}</div>
-        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 1 }}>
-          {f(h.shares, h.shares % 1 ? 5 : 0)} 股 · {sym}{f(h.price, 2)}
-          {isUpdating && <span style={{ color: "#10b981", marginLeft: 4 }}>↻</span>}
+
+      {/* Expanded detail */}
+      {expanded && avgCost && (
+        <div style={{ background: returnPct >= 0 ? "#f0fdf9" : "#fff1f2", borderRadius: "0 0 18px 18px", padding: "12px 16px", border: `1.5px solid ${returnPct >= 0 ? "#a7f3d0" : "#fecdd3"}`, borderTop: "none", display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 70 }}>
+            <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 3 }}>加權均價</div>
+            <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace" }}>{sym}{f(avgCost, 2)}</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 70 }}>
+            <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 3 }}>未實現損益</div>
+            <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace", color: profit >= 0 ? "#10b981" : "#f43f5e" }}>
+              {profit >= 0 ? "+" : ""}{sym}{f(Math.round(profit))}
+            </div>
+          </div>
+          <div style={{ flex: 1, minWidth: 70 }}>
+            <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 3 }}>報酬率</div>
+            <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace", color: returnPct >= 0 ? "#10b981" : "#f43f5e" }}>
+              {returnPct >= 0 ? "+" : ""}{returnPct.toFixed(1)}%
+            </div>
+          </div>
+          {annualized !== null && (
+            <div style={{ flex: 1, minWidth: 70 }}>
+              <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 3 }}>年化</div>
+              <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace", color: annualized >= 0 ? "#10b981" : "#f43f5e" }}>
+                {annualized >= 0 ? "+" : ""}{annualized.toFixed(1)}%
+              </div>
+            </div>
+          )}
+          {realizedGain !== 0 && (
+            <div style={{ flex: 1, minWidth: 70 }}>
+              <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 3 }}>已實現</div>
+              <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace", color: realizedGain >= 0 ? "#10b981" : "#f43f5e" }}>
+                {realizedGain >= 0 ? "+" : ""}{sym}{f(Math.round(realizedGain))}
+              </div>
+            </div>
+          )}
         </div>
-      </div>
-      <div style={{ textAlign: "right", flexShrink: 0 }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: "#0f4c3a", fontFamily: "monospace" }}>{sym}{f(Math.round(h.shares * h.price))}</div>
-        <div style={{ display: "flex", gap: 4, marginTop: 5, justifyContent: "flex-end" }}>
-          <button onClick={() => onEdit(h)} style={{ background: "#ecfdf5", border: "none", borderRadius: 7, color: "#10b981", fontSize: 11, padding: "3px 8px", fontWeight: 600, cursor: "pointer" }}>編輯</button>
-          <button onClick={() => onDelete(h.id)} style={{ background: "#fff1f2", border: "none", borderRadius: 7, color: "#f43f5e", fontSize: 11, padding: "3px 8px", fontWeight: 600, cursor: "pointer" }}>刪除</button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -785,14 +878,14 @@ export default function App() {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f0fdf9", fontFamily: "'Noto Sans TC',sans-serif", color: "#1a1a2e" }}>
+    <div style={{ minHeight: "100vh", background: "#f0fdf9", fontFamily: "Noto Sans TC, sans-serif", color: "#1a1a2e" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600;700&display=swap');
         *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
         body{margin:0}
         ::-webkit-scrollbar{display:none}
         @keyframes spin{to{transform:rotate(360deg)}}
       `}</style>
+
 
       {/* ── Header ── */}
       <div style={{ background: "linear-gradient(150deg,#ecfdf5,#f0f9ff)", padding: "44px 18px 0", position: "sticky", top: 0, zIndex: 50, borderBottom: "1px solid #d1fae5" }}>
@@ -899,7 +992,6 @@ export default function App() {
               items={port.holdings}
               onReorder={list => updatePortfolios(p => ({ ...p, [tab]: { ...p[tab], holdings: list } }))}
               renderItem={(h, i, dragHandle) => (
-                <div>
                   <HoldingCard
                     h={h}
                     pct={slices[i]?.pct || 0}
@@ -910,8 +1002,7 @@ export default function App() {
                     onDelete={id => updatePortfolios(p => ({ ...p, [tab]: { ...p[tab], holdings: p[tab].holdings.filter(h => h.id !== id) } }))}
                     dragHandle={dragHandle}
                   />
-                  <PerfCard h={h} currency={port.currency}
-                    benchmarkReturn={tab === "tw" && benchmarks["^TWII"] ? null : null} />
+
                 </div>
               )}
             />
