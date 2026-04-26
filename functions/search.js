@@ -129,9 +129,9 @@ const US_NAMES = {
   "FNGU":"FANG+正3ETF","FNGD":"FANG+反3ETF",
 
   // ── 其他大型科技/軟體 ──
-  "UBER":"優步","ABNB":"Airbnb","RBLX":"Roblox","U":"Unity",
+  "RBLX":"Roblox","U":"Unity",
   "PLTK":"Playtika","EA":"藝電","TTWO":"Take-Two互動",
-  "ATVI":"動視暴雪（已被微軟收購）","NTES":"網易",
+  "ATVI":"動視暴雪（已被微軟收購）",
   "ZEN":"Zendesk","SPSC":"SPS Commerce","PCTY":"Paylocity",
   "PAYC":"Paycom","COUP":"Coupa Software","APPF":"AppFolio",
   "ASAN":"Asana","MNDY":"Monday.com","TASK":"TaskUs",
