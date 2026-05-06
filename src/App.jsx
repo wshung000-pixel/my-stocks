@@ -817,7 +817,7 @@ export default function App() {
           const usT = portRef.current.us.holdings.reduce((s,h)=>s+h.shares*h.price,0);
           const entry = { date: todayLabel, dateKey: todayKey, value: 0, twT, usT };
           const filtered = prev.filter(d => d.dateKey !== todayKey);
-          const next = [...filtered.slice(-89), entry];
+          const next = [...filtered.slice(-364), entry];
           apiSave("history", next).catch(console.warn);
           return next;
         });
@@ -1012,20 +1012,10 @@ export default function App() {
         {tab === "chart" && (
           <div style={{ paddingTop: 4 }}>
             <div style={{ background: "#fff", borderRadius: 20, padding: "18px 16px", marginBottom: 12, border: "1.5px solid #d1fae5", boxShadow: "0 4px 20px rgba(16,185,129,0.07)" }}>
-              <LineChart data={resolvedHistory} color="#10b981" label="總資產（台幣）" />
+              <DualLineChart data={history} usdTwd={usdTwd} cashHistory={null} />
             </div>
-            <div style={{ background: "#fff", borderRadius: 20, padding: "18px 16px", marginBottom: 12, border: "1.5px solid #d1fae5", boxShadow: "0 4px 20px rgba(16,185,129,0.07)" }}>
-              <LineChart
-                data={history.map(d => ({ date: d.date, value: (d.twT || 0) }))}
-                color="#0ea5e9" label="台股（TWD）" />
-            </div>
-            <div style={{ background: "#fff", borderRadius: 20, padding: "18px 16px", marginBottom: 12, border: "1.5px solid #d1fae5", boxShadow: "0 4px 20px rgba(16,185,129,0.07)" }}>
-              <LineChart
-                data={history.map(d => ({ date: d.date, value: (d.usT || 0) }))}
-                color="#f59e0b" label="美股（USD）" />
-            </div>
-            <div style={{ background: "#f0fdf9", borderRadius: 14, padding: "12px 14px", fontSize: 12, color: "#6b7280", lineHeight: 1.6 }}>
-              💡 每次開 App 或更新報價時自動記錄，最多保留 90 天
+            <div style={{ background: "#f0fdf9", borderRadius: 14, padding: "10px 14px", fontSize: 11, color: "#9ca3af" }}>
+              💡 每天收盤後（下午1:30後）自動記錄，保留365天
             </div>
           </div>
         )}
